@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.002.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Zinc.ECSGenerator", "Zinc.ECSGenerator\Zinc.ECSGenerator.csproj", "{1D56ED7B-160A-4CBA-8AC7-39EF2D6621CE}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Zinc.ECSGenerator.Sample", "Zinc.ECSGenerator.Sample\Zinc.ECSGenerator.Sample.csproj", "{953EFA05-0CA8-4D76-BCFF-669801DF40A1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1D56ED7B-160A-4CBA-8AC7-39EF2D6621CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D56ED7B-160A-4CBA-8AC7-39EF2D6621CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D56ED7B-160A-4CBA-8AC7-39EF2D6621CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D56ED7B-160A-4CBA-8AC7-39EF2D6621CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{953EFA05-0CA8-4D76-BCFF-669801DF40A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{953EFA05-0CA8-4D76-BCFF-669801DF40A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{953EFA05-0CA8-4D76-BCFF-669801DF40A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{953EFA05-0CA8-4D76-BCFF-669801DF40A1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {AA980730-5C7F-46EB-A14A-9177F432BDDD}
+	EndGlobalSection
+EndGlobal
