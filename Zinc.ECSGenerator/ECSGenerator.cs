@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.Text;
 namespace Zinc.ECSGenerator;
 
 [Generator]
-public class ECSGenerator : IIncrementalGenerator
+public class EcsSourceGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -37,7 +37,7 @@ public class ECSGenerator : IIncrementalGenerator
         bool useNestedNames = HasUseNestedComponentMemberNamesAttribute(classSymbol);
         var componentAttributes = GetComponentAttributes(classSymbol);
         
-        string partialClassCode = GeneratePartialClass(nameSpace, className, componentAttributes);
+        string partialClassCode = GeneratePartialClass(nameSpace, className, componentAttributes, useNestedNames);
         context.AddSource($"{className}.g.cs", SourceText.From(partialClassCode, Encoding.UTF8));
 
         foreach (var component in componentAttributes)
@@ -72,9 +72,9 @@ public class ECSGenerator : IIncrementalGenerator
         return classSymbol.GetAttributes().Any(attr => attr.AttributeClass.Name == "UseNestedComponentMemberNamesAttribute");
     }
 
-    private List<(string Type, string Name, bool NestDeclaration, List<(string Name, ITypeSymbol Type)> Properties)> GetComponentAttributes(INamedTypeSymbol classSymbol)
+    private List<(string Type, string Name, List<(string Name, ITypeSymbol Type)> Properties)> GetComponentAttributes(INamedTypeSymbol classSymbol)
     {
-        var components = new List<(string, string, bool, List<(string, ITypeSymbol)>)>();
+        var components = new List<(string, string, List<(string, ITypeSymbol)>)>();
         
         foreach (var attribute in classSymbol.GetAttributes())
         {
@@ -82,44 +82,39 @@ public class ECSGenerator : IIncrementalGenerator
             {
                 string typeName = attribute.AttributeClass.Name.Replace("Attribute", "");
                 string name = char.ToLowerInvariant(typeName[0]) + typeName.Substring(1);
-                
-                bool nestDeclaration = false; // Default value
-                var nestDeclarationArg = attribute.NamedArguments.FirstOrDefault(na => na.Key == "nestTypeName");
-                if (nestDeclarationArg.Key != null)
-                {
-                    nestDeclaration = (bool)nestDeclarationArg.Value.Value;
-                }
 
                 var properties = attribute.AttributeClass.GetMembers()
                     .OfType<IPropertySymbol>()
                     .Select(p => (p.Name, p.Type))
                     .ToList();
                 
-                components.Add((typeName, name, nestDeclaration, properties));
+                components.Add((typeName, name, properties));
             }
         }
         
         return components;
     }
 
-    private string GeneratePartialClass(string nameSpace, string className, List<(string Type, string Name, bool NestDeclaration, List<(string Name, ITypeSymbol Type)> Properties)> components)
+    private string GeneratePartialClass(string nameSpace, string className, List<(string Type, string Name, List<(string Name, ITypeSymbol Type)> Properties)> components, bool useNestedNames)
     {
         var writer = new Utils.CodeWriter();
 
-        writer.AddLine($"using Zinc.Core;");
+        writer.AddLine("using Zinc.Core;");
+        writer.AddLine("");
 
         if (!string.IsNullOrEmpty(nameSpace))
         {
             writer.AddLine($"namespace {nameSpace};");
+            writer.AddLine();
         }
 
         writer.OpenScope($"public partial class {className} : BaseEntity");
 
-        foreach (var (type, name, nestDeclaration, properties) in components)
+        foreach (var (type, name, properties) in components)
         {
             foreach (var (propName, propType) in properties)
             {
-                string propertyName = nestDeclaration ? $"{type}_{propName}" : propName;
+                string propertyName = useNestedNames ? $"{type}_{propName}" : propName;
                 string typeName = propType.ToDisplayString();
                 
                 bool isDelegate = typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func");
@@ -159,17 +154,20 @@ public class ECSGenerator : IIncrementalGenerator
         return writer.ToString();
     }
 
-    private string GenerateComponentStruct(string nameSpace, (string Type, string Name, bool NestDeclaration, List<(string Name, ITypeSymbol Type)> Properties) component)
+    private string GenerateComponentStruct(string nameSpace, (string Type, string Name, List<(string Name, ITypeSymbol Type)> Properties) component)
     {
         var writer = new Utils.CodeWriter();
 
+        writer.AddLine("using Zinc.Core;");
+        writer.AddLine("");
+
         if (!string.IsNullOrEmpty(nameSpace))
         {
-            writer.AddLine($"using Zinc.Core;");
             writer.AddLine($"namespace {nameSpace};");
+            writer.AddLine();
         }
 
-        // NOTE: right now we prepend an underscore to the type name to avoid conflicts with the class name - could do something nicer
+        //NOTE: we prepend an underscore to differentiate the generated struct from the user-defined attribute
         writer.OpenScope($"public record struct _{component.Type}");
 
         foreach (var (propName, propType) in component.Properties)

@@ -1,4 +1,5 @@
 using Zinc.Core;
+using System;
 
 namespace Zinc.ECSGeneratorSample;
 
@@ -13,13 +14,14 @@ class Program
     }
 
 }
-public class Position(bool nestTypeName = false)  : BaseComponentAttribute(nestTypeName)
+public class Position  : BaseComponentAttribute
 {
     public float X { get; set; }
     public float Y { get; set; }
 }
 
-[Position(nestTypeName:true)]
+[Position]
+// [UseNestedComponentMemberNames]
 public partial class TestEntity : BaseEntity
 {
     
