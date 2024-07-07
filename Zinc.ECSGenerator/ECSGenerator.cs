@@ -40,11 +40,8 @@ public class EcsSourceGenerator : IIncrementalGenerator
         string partialClassCode = GeneratePartialClass(nameSpace, className, componentAttributes, useNestedNames);
         context.AddSource($"{className}.g.cs", SourceText.From(partialClassCode, Encoding.UTF8));
 
-        foreach (var component in componentAttributes)
-        {
-            string componentCode = GenerateComponentStruct(nameSpace, component);
-            context.AddSource($"{component.Type}.g.cs", SourceText.From(componentCode, Encoding.UTF8));
-        }
+        // string debugInfo = GenerateDebugInfo(classSymbol, componentAttributes);
+        // context.AddSource($"{className}.debug.g.cs", SourceText.From(debugInfo, Encoding.UTF8));
     }
 
     private string GetNamespace(ISymbol symbol)
@@ -72,30 +69,36 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return classSymbol.GetAttributes().Any(attr => attr.AttributeClass.Name == "UseNestedComponentMemberNamesAttribute");
     }
 
-    private List<(string Type, string Name, List<(string Name, ITypeSymbol Type)> Properties)> GetComponentAttributes(INamedTypeSymbol classSymbol)
+    private List<(INamedTypeSymbol Type, string Name)> GetComponentAttributes(INamedTypeSymbol classSymbol)
     {
-        var components = new List<(string, string, List<(string, ITypeSymbol)>)>();
+        var components = new List<(INamedTypeSymbol, string)>();
         
         foreach (var attribute in classSymbol.GetAttributes())
         {
-            if (attribute.AttributeClass.BaseType?.Name == "BaseComponentAttribute")
+            if (attribute.AttributeClass.IsGenericType && attribute.AttributeClass.Name == "ComponentAttribute")
             {
-                string typeName = attribute.AttributeClass.Name.Replace("Attribute", "");
-                string name = char.ToLowerInvariant(typeName[0]) + typeName.Substring(1);
+                var componentType = attribute.AttributeClass.TypeArguments[0] as INamedTypeSymbol;
+                if (componentType == null) continue;
 
-                var properties = attribute.AttributeClass.GetMembers()
-                    .OfType<IPropertySymbol>()
-                    .Select(p => (p.Name, p.Type))
-                    .ToList();
+                string name = "";
                 
-                components.Add((typeName, name, properties));
+                if (attribute.ConstructorArguments.Length > 0 && !string.IsNullOrEmpty(attribute.ConstructorArguments[0].Value?.ToString()))
+                {
+                    name = attribute.ConstructorArguments[0].Value.ToString();
+                }
+                else
+                {
+                    name = componentType.Name;
+                }
+                
+                components.Add((componentType, name));
             }
         }
         
         return components;
     }
 
-    private string GeneratePartialClass(string nameSpace, string className, List<(string Type, string Name, List<(string Name, ITypeSymbol Type)> Properties)> components, bool useNestedNames)
+    private string GeneratePartialClass(string nameSpace, string className, List<(INamedTypeSymbol Type, string Name)> components, bool useNestedNames)
     {
         var writer = new Utils.CodeWriter();
 
@@ -108,24 +111,24 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine();
         }
 
-        writer.OpenScope($"public partial class {className} : BaseEntity");
+        writer.OpenScope($"public partial class {className}");
 
-        foreach (var (type, name, properties) in components)
+        foreach (var (type, name) in components)
         {
-            foreach (var (propName, propType) in properties)
+            foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
             {
-                string propertyName = useNestedNames ? $"{type}_{propName}" : propName;
-                string typeName = propType.ToDisplayString();
+                string propertyName = useNestedNames ? $"{name}_{property.Name}" : property.Name;
+                string typeName = property.Type.ToDisplayString();
                 
                 bool isDelegate = typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func");
 
                 if (isDelegate)
                 {
                     writer.OpenScope($"public {typeName} {propertyName}");
-                    writer.AddLine($"get => Get<{type}>(\"{name}\").{propName};");
+                    writer.AddLine($"get => Get<{type.Name}>(\"{name}\").{property.Name};");
                     writer.OpenScope("set");
-                    writer.AddLine($"var component = Get<{type}>(\"{name}\");");
-                    writer.AddLine($"component.{propName} = value;");
+                    writer.AddLine($"var component = Get<{type.Name}>(\"{name}\");");
+                    writer.AddLine($"component.{property.Name} = value;");
                     writer.AddLine($"Set(\"{name}\", component);");
                     writer.CloseScope();
                     writer.CloseScope();
@@ -154,29 +157,18 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return writer.ToString();
     }
 
-    private string GenerateComponentStruct(string nameSpace, (string Type, string Name, List<(string Name, ITypeSymbol Type)> Properties) component)
+    private string GenerateDebugInfo(INamedTypeSymbol classSymbol, List<(INamedTypeSymbol Type, string Name)> components)
     {
         var writer = new Utils.CodeWriter();
-
-        writer.AddLine("using Zinc.Core;");
-        writer.AddLine("");
-
-        if (!string.IsNullOrEmpty(nameSpace))
+        writer.AddLine($"// Debug information for {classSymbol.Name}");
+        writer.AddLine($"// Attributes: {string.Join(", ", classSymbol.GetAttributes().Select(a => a.AttributeClass.ToDisplayString()))}");
+        writer.AddLine($"// Component count: {components.Count}");
+        
+        foreach (var (type, name) in components)
         {
-            writer.AddLine($"namespace {nameSpace};");
-            writer.AddLine();
+            writer.AddLine($"// Component: {type.Name}, Name: {name}");
+            writer.AddLine($"// Properties: {string.Join(", ", type.GetMembers().OfType<IPropertySymbol>().Select(p => p.Name))}");
         }
-
-        //NOTE: we prepend an underscore to differentiate the generated struct from the user-defined attribute
-        writer.OpenScope($"public record struct _{component.Type}");
-
-        foreach (var (propName, propType) in component.Properties)
-        {
-            string typeName = propType.ToDisplayString();
-            writer.AddLine($"public {typeName} {propName} {{ get; set; }}");
-        }
-
-        writer.CloseScope();
 
         return writer.ToString();
     }

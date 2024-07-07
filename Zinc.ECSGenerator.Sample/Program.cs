@@ -14,14 +14,14 @@ class Program
     }
 
 }
-public class Position  : BaseComponentAttribute
-{
-    public float X { get; set; }
-    public float Y { get; set; }
+public record struct Position : IComponent 
+{ 
+    public float X { get; set; } 
+    public float Y { get; set; } 
 }
 
-[Position]
 // [UseNestedComponentMemberNames]
+[Component<Position>("SomeCoolPosition")]
 public partial class TestEntity : BaseEntity
 {
     
