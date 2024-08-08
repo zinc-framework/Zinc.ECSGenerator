@@ -28,8 +28,15 @@ public class Position : IComponent
     public Action<float> OnValueChanged { get; set; }
 }
 
+public class Collider : IComponent 
+{ 
+    public float X { get; set; } 
+    public float Y { get; set; } 
+}
+
 // [UseNestedComponentMemberNames]
-[Component<Position>("SomeCoolPosition")]
+[Component<Position>]
+[Component<Collider>("CircleCollider")]
 public partial class TestEntity : Entity
 {
     

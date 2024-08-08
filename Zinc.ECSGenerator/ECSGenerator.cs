@@ -35,9 +35,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
         string className = classDeclaration.Identifier.Text;
         
         bool useNestedNames = HasUseNestedComponentMemberNamesAttribute(classSymbol);
-        var componentAttributes = GetComponentAttributes(classSymbol);
+        var componentAttributes = GetComponentAttributes(classSymbol, useNestedNames);
         
-        string partialClassCode = GeneratePartialClass(nameSpace, className, componentAttributes, useNestedNames);
+        string partialClassCode = GeneratePartialClass(nameSpace, className, componentAttributes);
         context.AddSource($"{className}.g.cs", SourceText.From(partialClassCode, Encoding.UTF8));
 
         // string debugInfo = GenerateDebugInfo(classSymbol, componentAttributes);
@@ -69,7 +69,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return classSymbol.GetAttributes().Any(attr => attr.AttributeClass.Name == "UseNestedComponentMemberNamesAttribute");
     }
 
-    private List<(INamedTypeSymbol Type, string Name)> GetComponentAttributes(INamedTypeSymbol classSymbol)
+    private List<(INamedTypeSymbol Type, string Name)> GetComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
     {
         var components = new List<(INamedTypeSymbol, string)>();
         
@@ -82,11 +82,14 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
                 string name = "";
                 
+                //name the property if the attribute has a name argument
                 if (attribute.ConstructorArguments.Length > 0 && !string.IsNullOrEmpty(attribute.ConstructorArguments[0].Value?.ToString()))
                 {
                     name = attribute.ConstructorArguments[0].Value.ToString();
                 }
-                else
+                //otherwise, if we have the useNestedNames attribute, use the component type name
+                //note that an explictly set name will override this
+                else if(useNestedNames)
                 {
                     name = componentType.Name;
                 }
@@ -98,7 +101,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return components;
     }
 
-    private string GeneratePartialClass(string nameSpace, string className, List<(INamedTypeSymbol Type, string Name)> components, bool useNestedNames)
+    private string GeneratePartialClass(string nameSpace, string className, List<(INamedTypeSymbol Type, string Name)> components)
     {
         var writer = new Utils.CodeWriter();
 
@@ -130,40 +133,43 @@ public class EcsSourceGenerator : IIncrementalGenerator
         //add component field reference members
         foreach (var (type, name) in components)
         {
+            // writer.AddLine($"public _{type.Name} {(!string.IsNullOrEmpty(name) ? name : type.Name)} = new();");
+            // writer.OpenScope($"public class _{type.Name}");
             foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
             {
-                string propertyName = useNestedNames ? $"{name}_{property.Name}" : property.Name;
+                string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{property.Name}" : property.Name;
                 string typeName = property.Type.ToDisplayString();
                 
                 bool isDelegate = typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func");
 
                 if (isDelegate)
                 {
-                    writer.OpenScope($"public {typeName} {propertyName}");
+                    writer.OpenScope($"public {typeName} {accessorName}");
                     writer.OpenScope("get");
                         writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-                        writer.AddLine($"return component.{propertyName};");
+                        writer.AddLine($"return component.{property.Name};");
                     writer.CloseScope();
                     writer.OpenScope("set");
                          writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-                        writer.AddLine($"component.{propertyName} = value;");
+                        writer.AddLine($"component.{property.Name} = value;");
                     writer.CloseScope();
                     writer.CloseScope();
                 }
                 else
                 {
-                    writer.AddLine($"private {typeName} {propertyName.ToLowerInvariant()};");
-                    writer.OpenScope($"public {typeName} {propertyName}");
-                        writer.AddLine($"get => {propertyName.ToLowerInvariant()};");
+                    writer.AddLine($"private {typeName} {accessorName.ToLowerInvariant()};");
+                    writer.OpenScope($"public {typeName} {accessorName}");
+                        writer.AddLine($"get => {accessorName.ToLowerInvariant()};");
                         writer.OpenScope("set");
                             writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-                            writer.AddLine($"component.{propertyName} = value;");
-                            writer.AddLine($"{propertyName.ToLowerInvariant()} = value;");
+                            writer.AddLine($"component.{property.Name} = value;");
+                            writer.AddLine($"{accessorName.ToLowerInvariant()} = value;");
                         writer.CloseScope();
                     writer.CloseScope();
                 }
                 writer.AddLine();
             }
+            writer.CloseScope();
         }
 
         writer.CloseScope();

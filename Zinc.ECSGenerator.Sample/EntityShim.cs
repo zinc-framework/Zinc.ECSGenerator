@@ -51,5 +51,5 @@ public class ShimECSEntity
 public class BaseComponentAttribute : System.Attribute {}
 public class UseNestedComponentMemberNamesAttribute : System.Attribute {}
 public interface IComponent {}
-
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true)]
 public class ComponentAttribute<T>(string name = "") : System.Attribute where T : IComponent {}
