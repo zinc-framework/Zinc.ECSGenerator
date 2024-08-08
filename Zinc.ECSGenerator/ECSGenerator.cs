@@ -125,27 +125,26 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 if (isDelegate)
                 {
                     writer.OpenScope($"public {typeName} {propertyName}");
-                    writer.AddLine($"get => Get<{type.Name}>(\"{name}\").{property.Name};");
+                    writer.OpenScope("get");
+                        writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+                        writer.AddLine($"return component.{propertyName};");
+                    writer.CloseScope();
                     writer.OpenScope("set");
-                    writer.AddLine($"var component = Get<{type.Name}>(\"{name}\");");
-                    writer.AddLine($"component.{property.Name} = value;");
-                    writer.AddLine($"Set(\"{name}\", component);");
+                         writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+                        writer.AddLine($"component.{propertyName} = value;");
                     writer.CloseScope();
                     writer.CloseScope();
                 }
                 else
                 {
-                    //real
-                    // writer.OpenScope($"public {typeName} {propertyName}");
-                    // writer.AddLine($"get => Get<{type}>(\"{name}\").{propName};");
-                    // writer.AddLine($"set => Set(\"{name}\", Get<{type}>(\"{name}\") with {{ {propName} = value }});");
-                    // writer.CloseScope();
-
-                    //debug
                     writer.AddLine($"private {typeName} {propertyName.ToLowerInvariant()};");
                     writer.OpenScope($"public {typeName} {propertyName}");
-                    writer.AddLine($"get => {propertyName.ToLowerInvariant()};");
-                    writer.AddLine($"set => {propertyName.ToLowerInvariant()} = value;");
+                        writer.AddLine($"get => {propertyName.ToLowerInvariant()};");
+                        writer.OpenScope("set");
+                            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+                            writer.AddLine($"component.{propertyName} = value;");
+                            writer.AddLine($"{propertyName.ToLowerInvariant()} = value;");
+                        writer.CloseScope();
                     writer.CloseScope();
                 }
                 writer.AddLine();
