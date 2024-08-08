@@ -18,7 +18,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
             .CreateSyntaxProvider(
                 predicate: static (s, _) => s is ClassDeclarationSyntax,
                 transform: static (ctx, _) => ((Compilation)ctx.SemanticModel.Compilation, (ClassDeclarationSyntax)ctx.Node))
-            .Where(t => t.Item2.BaseList?.Types.Any(type => type.Type.ToString() == "BaseEntity") == true);
+            .Where(t => t.Item2.BaseList?.Types.Any(type => type.Type.ToString() == "Entity") == true);
 
         context.RegisterSourceOutput(classDeclarations, 
             (spc, source) => Execute(source.Item1, source.Item2, spc));

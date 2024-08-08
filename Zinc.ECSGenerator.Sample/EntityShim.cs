@@ -5,7 +5,7 @@ using System.Reflection;
 
 namespace Zinc.Core;
 
-public class BaseEntity 
+public class Entity 
 {
     public ShimECSEntity ECSEntity = new();
 }

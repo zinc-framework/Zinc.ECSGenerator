@@ -30,7 +30,7 @@ public class Position : IComponent
 
 // [UseNestedComponentMemberNames]
 [Component<Position>("SomeCoolPosition")]
-public partial class TestEntity : BaseEntity
+public partial class TestEntity : Entity
 {
     
 }
