@@ -13,7 +13,7 @@
 
         <RootNamespace>Zinc.ECSGenerator</RootNamespace>
         <PackageId>Zinc.ECSGenerator</PackageId>
-        <Version>1.0.3</Version>
+        <Version>1.0.4</Version>
         <Authors>Kyle Kukshtel</Authors>
         <Company>Afterschool Studio</Company>
         <!-- <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\..\artifacts\</PackageOutputPath> -->

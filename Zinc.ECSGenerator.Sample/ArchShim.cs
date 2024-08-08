@@ -1,0 +1,4 @@
+namespace Arch.Core.Extensions
+{
+    
+}

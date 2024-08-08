@@ -103,6 +103,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         var writer = new Utils.CodeWriter();
 
         writer.AddLine("using Zinc.Core;");
+        writer.AddLine("using Arch.Core.Extensions;");
         writer.AddLine("");
 
         if (!string.IsNullOrEmpty(nameSpace))
