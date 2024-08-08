@@ -16,7 +16,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
     {
         IncrementalValuesProvider<(Compilation, ClassDeclarationSyntax)> classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (s, _) => s is ClassDeclarationSyntax,
+                predicate: static (s, _) => s is ClassDeclarationSyntax { Modifiers: var m } && m.Any(SyntaxKind.PartialKeyword),
                 transform: static (ctx, _) => ((Compilation)ctx.SemanticModel.Compilation, (ClassDeclarationSyntax)ctx.Node))
             .Where(t => t.Item2.BaseList?.Types.Any(type => type.Type.ToString() == "Entity") == true);
 
@@ -114,15 +114,18 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         writer.OpenScope($"public partial class {className} : Entity");
 
-        //add in the method that adds the components
-        writer.OpenScope("protected override void AddAttributeComponents()");
-        var typeNames = new List<string>();
-        foreach (var (type, _) in components)
+        if(components.Any())
         {
-            typeNames.Add($"new {type.Name}()");
+            //add in the method that adds the components
+            writer.OpenScope("protected override void AddAttributeComponents()");
+            var typeNames = new List<string>();
+            foreach (var (type, _) in components)
+            {
+                typeNames.Add($"new {type.Name}()");
+            }
+            writer.AddLine($"ECSEntity.Add({string.Join(",",typeNames)});");
+            writer.CloseScope();
         }
-        writer.AddLine($"ECSEntity.Add({string.Join(",",typeNames)});");
-        writer.CloseScope();
 
         //add component field reference members
         foreach (var (type, name) in components)
