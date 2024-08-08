@@ -9,7 +9,7 @@ class Program
     {
         // Your code here
         System.Console.WriteLine("Hello, World!");
-        var e = new TestEntity(){ X = 1, Y = 2, Z = 3 };
+        var e = new TestEntity(){ X = 1, Y = 2, Z = 3, CircleCollider.X = 10 };
         e.OnValueChanged += (v) => System.Console.WriteLine($"Value change invoked: {v}"); 
         System.Console.WriteLine($"X: {e.X}, Y: {e.Y}");
         e.OnValueChanged?.Invoke(42);
@@ -35,7 +35,7 @@ public class Collider : IComponent
 }
 
 // [UseNestedComponentMemberNames]
-[Component<Position>]
+[Component<Position>(topLevelAccessor:true)]
 [Component<Collider>("CircleCollider")]
 public partial class TestEntity : Entity
 {
