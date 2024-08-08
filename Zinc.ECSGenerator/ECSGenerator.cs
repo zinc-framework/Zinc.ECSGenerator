@@ -69,9 +69,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return classSymbol.GetAttributes().Any(attr => attr.AttributeClass.Name == "UseNestedComponentMemberNamesAttribute");
     }
 
-    private List<(INamedTypeSymbol Type, string Name, bool topLevel)> GetComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
+    private List<(INamedTypeSymbol Type, string Name)> GetComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
     {
-        var components = new List<(INamedTypeSymbol, string,bool)>();
+        var components = new List<(INamedTypeSymbol, string)>();
         
         foreach (var attribute in classSymbol.GetAttributes())
         {
@@ -81,48 +81,34 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 if (componentType == null) continue;
 
                 string? name = null;
-                bool? topLevelAccessor = null;
 
                 // Check for named arguments
                 foreach (var namedArgument in attribute.NamedArguments)
                 {
-                    switch (namedArgument.Key)
+                    if (namedArgument.Key == "name")
                     {
-                        case "name":
-                            name = namedArgument.Value.Value?.ToString();
-                            break;
-                        case "topLevelAccessor":
-                            topLevelAccessor = (bool?)namedArgument.Value.Value;
-                            break;
+                        name = namedArgument.Value.Value?.ToString();
+                        break;
                     }
                 }
 
-                // Check constructor arguments for any values not set by named arguments
-                if (name == null || topLevelAccessor == null)
+                // Check constructor arguments if name is not set
+                if (name == null && attribute.ConstructorArguments.Length > 0)
                 {
-                    if (attribute.ConstructorArguments.Length > 0 && name == null)
-                    {
-                        name = attribute.ConstructorArguments[0].Value?.ToString();
-                    }
-                    
-                    if (attribute.ConstructorArguments.Length > 1 && topLevelAccessor == null)
-                    {
-                        topLevelAccessor = (bool?)attribute.ConstructorArguments[1].Value;
-                    }
+                    name = attribute.ConstructorArguments[0].Value?.ToString();
                 }
 
-                // Apply defaults if values are still null
+                // Apply default if value is still null
                 name = name ?? (useNestedNames ? componentType.Name : "");
-                topLevelAccessor = topLevelAccessor ?? false;
 
-                components.Add((componentType, name, topLevelAccessor.Value));
+                components.Add((componentType, name));
             }
         }
         
         return components;
     }
 
-    private string GeneratePartialClass(string nameSpace, string className, List<(INamedTypeSymbol Type, string Name, bool topLevelComponent)> components)
+    private string GeneratePartialClass(string nameSpace, string className, List<(INamedTypeSymbol Type, string Name)> components)
     {
         var writer = new Utils.CodeWriter();
 
@@ -140,10 +126,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         if(components.Any())
         {
-            //add in the method that adds the components
             writer.OpenScope("protected override void AddAttributeComponents()");
             var typeNames = new List<string>();
-            foreach (var (type, _, _) in components)
+            foreach (var (type, _) in components)
             {
                 typeNames.Add($"new {type.Name}()");
             }
@@ -151,38 +136,22 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.CloseScope();
         }
 
-        //add component field reference members
-        foreach (var (type, name, topLevel) in components)
+        foreach (var (type, name) in components)
         {
-            if(!topLevel)
-            {
-                var propName = !string.IsNullOrEmpty(name) ? name : type.Name;
-                writer.AddLine($"private _{type.Name} _{type.Name}_{propName};");
-                writer.AddLine($"public _{type.Name} {propName} => _{type.Name}_{propName} ??= new _{type.Name}(this);");
-                writer.OpenScope($"public class _{type.Name}(Entity e)");
-            }
-
             foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
             {
-                //non top-level accessors dont get prepended name, as they are already nested in class
-                string accessorName = property.Name;
-                string entityRefName = topLevel ? "ECSEntity" : "e.ECSEntity";
-                if(topLevel)
-                {
-                    //top level accessors get prepended name if any
-                    accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{property.Name}" : property.Name;
-                }
+                string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{property.Name}" : property.Name;
                 string typeName = property.Type.ToDisplayString();
                 
                 if (typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func")) //check if delegate
                 {
                     writer.OpenScope($"public {typeName} {accessorName}");
                     writer.OpenScope("get");
-                        writer.AddLine($"ref var component = ref {entityRefName}.Get<{type.Name}>();");
+                        writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
                         writer.AddLine($"return component.{property.Name};");
                     writer.CloseScope();
                     writer.OpenScope("set");
-                         writer.AddLine($"ref var component = ref {entityRefName}.Get<{type.Name}>();");
+                        writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
                         writer.AddLine($"component.{property.Name} = value;");
                     writer.CloseScope();
                     writer.CloseScope();
@@ -193,18 +162,13 @@ public class EcsSourceGenerator : IIncrementalGenerator
                     writer.OpenScope($"public {typeName} {accessorName}");
                         writer.AddLine($"get => {accessorName.ToLowerInvariant()};");
                         writer.OpenScope("set");
-                            writer.AddLine($"ref var component = ref {entityRefName}.Get<{type.Name}>();");
+                            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
                             writer.AddLine($"component.{property.Name} = value;");
                             writer.AddLine($"{accessorName.ToLowerInvariant()} = value;");
                         writer.CloseScope();
                     writer.CloseScope();
                 }
                 writer.AddLine();
-            }
-
-            if(!topLevel)
-            {
-                writer.CloseScope();
             }
         }
 
