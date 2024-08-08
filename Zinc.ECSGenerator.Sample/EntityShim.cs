@@ -8,6 +8,10 @@ namespace Zinc.Core;
 public class Entity 
 {
     public ShimECSEntity ECSEntity = new();
+    protected virtual void AddAttributeComponents()
+    {
+
+    }
 }
 public class ShimECSEntity
 {
@@ -25,6 +29,11 @@ public class ShimECSEntity
             components[type] = Activator.CreateInstance(type)!;
         }
 
+    }
+
+    public void Add(params object[] args)
+    {
+        return;
     }
     
     public ref T Get<T>() where T : class, IComponent

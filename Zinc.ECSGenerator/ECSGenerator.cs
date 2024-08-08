@@ -111,8 +111,19 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine();
         }
 
-        writer.OpenScope($"public partial class {className}");
+        writer.OpenScope($"public partial class {className} : Entity");
 
+        //add in the method that adds the components
+        writer.OpenScope("protected override void AddAttributeComponents()");
+        var typeNames = new List<string>();
+        foreach (var (type, _) in components)
+        {
+            typeNames.Add($"new {type.Name}()");
+        }
+        writer.AddLine($"ECSEntity.Add({string.Join(",",typeNames)});");
+        writer.CloseScope();
+
+        //add component field reference members
         foreach (var (type, name) in components)
         {
             foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
