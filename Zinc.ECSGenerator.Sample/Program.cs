@@ -13,6 +13,9 @@ class Program
         e.OnValueChanged += (v) => System.Console.WriteLine($"Value change invoked: {v}"); 
         System.Console.WriteLine($"X: {e.X}, Y: {e.Y}");
         e.OnValueChanged?.Invoke(42);
+
+        var d = new DerrivedClass();
+        d.derrivedValue = 42;
     }
 
 }
@@ -34,10 +37,21 @@ public class Collider : IComponent
     public float Y { get; set; } 
 }
 
+public class DerrivedComponent : IComponent
+{
+    public float derrivedValue { get; set; }
+}
+
 // [UseNestedComponentMemberNames]
-[Component<Position>(topLevelAccessor:true)]
+[Component<Position>()]
 [Component<Collider>("CircleCollider")]
 public partial class TestEntity : Entity
 {
     
+}
+
+[Component<DerrivedComponent>()]
+public partial class DerrivedClass : TestEntity
+{
+
 }

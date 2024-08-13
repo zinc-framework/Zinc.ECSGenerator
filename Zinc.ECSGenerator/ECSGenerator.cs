@@ -18,10 +18,25 @@ public class EcsSourceGenerator : IIncrementalGenerator
             .CreateSyntaxProvider(
                 predicate: static (s, _) => s is ClassDeclarationSyntax { Modifiers: var m } && m.Any(SyntaxKind.PartialKeyword),
                 transform: static (ctx, _) => ((Compilation)ctx.SemanticModel.Compilation, (ClassDeclarationSyntax)ctx.Node))
-            .Where(t => t.Item2.BaseList?.Types.Any(type => type.Type.ToString() == "Entity") == true);
+            .Where(t => IsEntityDerived(t.Item2, t.Item1));
 
         context.RegisterSourceOutput(classDeclarations, 
             (spc, source) => Execute(source.Item1, source.Item2, spc));
+    }
+
+    private static bool IsEntityDerived(ClassDeclarationSyntax classDeclaration, Compilation compilation)
+    {
+        var semanticModel = compilation.GetSemanticModel(classDeclaration.SyntaxTree);
+        var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
+        
+        while (classSymbol != null)
+        {
+            if (classSymbol.Name == "Entity")
+                return true;
+            classSymbol = classSymbol.BaseType;
+        }
+        
+        return false;
     }
 
     private void Execute(Compilation compilation, ClassDeclarationSyntax classDeclaration, SourceProductionContext context)
@@ -33,15 +48,28 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         string nameSpace = GetNamespace(classSymbol);
         string className = classDeclaration.Identifier.Text;
+        string baseClassName = classSymbol.BaseType?.Name ?? "Entity";
         
         bool useNestedNames = HasUseNestedComponentMemberNamesAttribute(classSymbol);
-        var componentAttributes = GetComponentAttributes(classSymbol, useNestedNames);
+        var currentClassComponents = GetComponentAttributes(classSymbol, useNestedNames);
+        var allComponents = GetAllComponentAttributes(classSymbol, useNestedNames);
         
-        string partialClassCode = GeneratePartialClass(nameSpace, className, componentAttributes);
-        context.AddSource($"{className}.g.cs", SourceText.From(partialClassCode, Encoding.UTF8));
+        if (currentClassComponents.Any())
+        {
+            string partialClassCode = GeneratePartialClass(nameSpace, className, baseClassName, currentClassComponents, allComponents);
+            context.AddSource($"{className}.g.cs", SourceText.From(partialClassCode, Encoding.UTF8));
+        }
+    }
 
-        // string debugInfo = GenerateDebugInfo(classSymbol, componentAttributes);
-        // context.AddSource($"{className}.debug.g.cs", SourceText.From(debugInfo, Encoding.UTF8));
+    private List<(INamedTypeSymbol Type, string Name)> GetAllComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
+    {
+        var components = new List<(INamedTypeSymbol, string)>();
+        while (classSymbol != null && classSymbol.Name != "Entity")
+        {
+            components.AddRange(GetComponentAttributes(classSymbol, useNestedNames));
+            classSymbol = classSymbol.BaseType;
+        }
+        return components.Distinct().ToList(); // Ensure no duplicate components
     }
 
     private string GetNamespace(ISymbol symbol)
@@ -108,7 +136,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return components;
     }
 
-    private string GeneratePartialClass(string nameSpace, string className, List<(INamedTypeSymbol Type, string Name)> components)
+    private string GeneratePartialClass(string nameSpace, string className, string baseClassName, 
+        List<(INamedTypeSymbol Type, string Name)> currentClassComponents, 
+        List<(INamedTypeSymbol Type, string Name)> allComponents)
     {
         var writer = new Utils.CodeWriter();
 
@@ -122,21 +152,17 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine();
         }
 
-        writer.OpenScope($"public partial class {className} : Entity");
+        writer.OpenScope($"public partial class {className} : {baseClassName}");
 
-        if(components.Any())
+        if(allComponents.Any())
         {
             writer.OpenScope("protected override void AddAttributeComponents()");
-            var typeNames = new List<string>();
-            foreach (var (type, _) in components)
-            {
-                typeNames.Add($"new {type.Name}()");
-            }
-            writer.AddLine($"ECSEntity.Add({string.Join(",",typeNames)});");
+            var typeNames = allComponents.Select(c => $"new {c.Type.Name}()");
+            writer.AddLine($"ECSEntity.Add({string.Join(",", typeNames)});");
             writer.CloseScope();
         }
 
-        foreach (var (type, name) in components)
+        foreach (var (type, name) in currentClassComponents)
         {
             foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
             {
