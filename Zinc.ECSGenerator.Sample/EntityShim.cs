@@ -5,14 +5,6 @@ using System.Reflection;
 
 namespace Zinc.Core;
 
-public class Entity 
-{
-    public ShimECSEntity ECSEntity = new();
-    protected virtual void AddAttributeComponents()
-    {
-
-    }
-}
 public class ShimECSEntity
 {
     private Dictionary<Type, object> components = new();

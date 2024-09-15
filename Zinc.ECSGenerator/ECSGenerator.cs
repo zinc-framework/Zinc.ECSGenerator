@@ -12,6 +12,7 @@ namespace Zinc.ECSGenerator;
 [Generator]
 public class EcsSourceGenerator : IIncrementalGenerator
 {
+    public static string BaseClassName = "EntityBase";
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<(Compilation, ClassDeclarationSyntax)> classDeclarations = context.SyntaxProvider
@@ -31,7 +32,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         
         while (classSymbol != null)
         {
-            if (classSymbol.Name == "Entity")
+            if (classSymbol.Name == BaseClassName)
                 return true;
             classSymbol = classSymbol.BaseType;
         }
@@ -48,13 +49,13 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         string nameSpace = GetNamespace(classSymbol);
         string className = classDeclaration.Identifier.Text;
-        string baseClassName = classSymbol.BaseType?.Name ?? "Entity";
+        string baseClassName = classSymbol.BaseType?.Name ?? BaseClassName;
         
         bool useNestedNames = HasUseNestedComponentMemberNamesAttribute(classSymbol);
         var currentClassComponents = GetComponentAttributes(classSymbol, useNestedNames);
         var allComponents = GetAllComponentAttributes(classSymbol, useNestedNames);
         
-        if (currentClassComponents.Any())
+        if (currentClassComponents.Any() || className == BaseClassName)
         {
             string partialClassCode = GeneratePartialClass(nameSpace, className, baseClassName, currentClassComponents, allComponents);
             context.AddSource($"{className}.g.cs", SourceText.From(partialClassCode, Encoding.UTF8));
@@ -64,12 +65,14 @@ public class EcsSourceGenerator : IIncrementalGenerator
     private List<(INamedTypeSymbol Type, string Name)> GetAllComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
     {
         var components = new List<(INamedTypeSymbol, string)>();
-        while (classSymbol != null && classSymbol.Name != "Entity")
+        while (classSymbol != null)
         {
             components.AddRange(GetComponentAttributes(classSymbol, useNestedNames));
+            if (classSymbol.Name == BaseClassName)
+                break;
             classSymbol = classSymbol.BaseType;
         }
-        return components.Distinct().ToList(); // Ensure no duplicate components
+        return components.Distinct().ToList();
     }
 
     private string GetNamespace(ISymbol symbol)
@@ -143,6 +146,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         var writer = new Utils.CodeWriter();
 
         writer.AddLine("using Zinc.Core;");
+        writer.AddLine("using Arch.Core;");
         writer.AddLine("using Arch.Core.Extensions;");
         writer.AddLine("");
 
@@ -152,13 +156,22 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine();
         }
 
-        writer.OpenScope($"public partial class {className} : {baseClassName}");
+        if(baseClassName == "Object")
+        {
+            //the base class doesn't inherit from anything explicitly
+            writer.OpenScope($"public partial class {className}");
+        }
+        else
+        {
+            writer.OpenScope($"public partial class {className} : {baseClassName}");
+        }
 
         if(allComponents.Any())
         {
-            writer.OpenScope("protected override void AddAttributeComponents()");
-            var typeNames = allComponents.Select(c => $"new {c.Type.Name}()");
-            writer.AddLine($"ECSEntity.Add({string.Join(",", typeNames)});");
+            var typeTypeNames = allComponents.Select(c => $"typeof({c.Type.Name})");
+            writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
+            writer.OpenScope("private Arch.Core.Entity CreateECSEntity(World world)");
+            writer.AddLine("return world.Create(EntityArchetype);");
             writer.CloseScope();
         }
 

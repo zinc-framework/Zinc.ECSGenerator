@@ -9,9 +9,9 @@ class Program
     {
         // Your code here
         System.Console.WriteLine("Hello, World!");
-        var e = new TestEntity(){ X = 1, Y = 2, Z = 3, CircleCollider_X = 10 };
+        var e = new TestEntity(){ X = 1, Y = 2, Z = 3, CircleCollider_X = 10, ID = 99 };
         e.OnValueChanged += (v) => System.Console.WriteLine($"Value change invoked: {v}"); 
-        System.Console.WriteLine($"X: {e.X}, Y: {e.Y}");
+        System.Console.WriteLine($"ID: {e.ID} X: {e.X}, Y: {e.Y}");
         e.OnValueChanged?.Invoke(42);
 
         var d = new DerrivedClass();
@@ -42,16 +42,37 @@ public class DerrivedComponent : IComponent
     public float derrivedValue { get; set; }
 }
 
+public class BaseClassComponent : IComponent
+{
+    public int ID { get; set; }
+}
+
+[Component<BaseClassComponent>()]
+public partial class EntityBase
+{
+    //test to make sure we can have a base class with components
+    //shim the real entity class
+    public ShimECSEntity ECSEntity = new();
+}
+
+public class Entity : EntityBase
+{
+    protected virtual void AddAttributeComponents()
+    {
+
+    }
+}
+
 // [UseNestedComponentMemberNames]
 [Component<Position>()]
 [Component<Collider>("CircleCollider")]
 public partial class TestEntity : Entity
 {
-    
+    //test that we can do derrived classes
 }
 
 [Component<DerrivedComponent>()]
 public partial class DerrivedClass : TestEntity
 {
-
+    //test that we can do children of children
 }
