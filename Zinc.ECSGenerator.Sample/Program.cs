@@ -47,12 +47,30 @@ public class BaseClassComponent : IComponent
     public int ID { get; set; }
 }
 
+public class AccessorComponentTester : IComponent
+{
+    public int PublicFieldValue = 3;
+    private int PrivateFieldValue = 3;
+    public int PublicProperty { get; set; } = 4;
+    public int NoSetter { get; } = 4;
+    public int PrivateGetter { private get; set; } = 4;
+    public int ProtectedGetter { protected get; set; } = 4;
+    public int PrivateSetter { get; private set; } = 4;
+    public int ProtectedSetter { get; protected set; } = 4;
+}
+
 [Component<BaseClassComponent>()]
 public partial class Entity
 {
     //test to make sure we can have a base class with components
     //shim the real entity class
     public ShimECSEntity ECSEntity = new();
+}
+
+[Component<AccessorComponentTester>]
+public partial class AccessorTesterEntity : Entity
+{
+
 }
 
 // [UseNestedComponentMemberNames]

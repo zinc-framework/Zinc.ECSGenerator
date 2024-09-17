@@ -139,6 +139,31 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return components;
     }
 
+    private List<(ISymbol Member, string Name)> GetComponentMembers(INamedTypeSymbol componentType)
+    {
+        var members = new List<(ISymbol, string)>();
+
+        foreach (var member in componentType.GetMembers())
+        {
+            if (member is IPropertySymbol property)
+            {
+                // Include properties with at least one public accessor
+                if (property.GetMethod?.DeclaredAccessibility == Accessibility.Public ||
+                    property.SetMethod?.DeclaredAccessibility == Accessibility.Public)
+                {
+                    members.Add((property, property.Name));
+                }
+            }
+            else if (member is IFieldSymbol field && field.DeclaredAccessibility == Accessibility.Public)
+            {
+                // Include public fields
+                members.Add((field, field.Name));
+            }
+        }
+
+        return members;
+    }
+
     private string GeneratePartialClass(string nameSpace, string className, string baseClassName, 
         List<(INamedTypeSymbol Type, string Name)> currentClassComponents, 
         List<(INamedTypeSymbol Type, string Name)> allComponents)
@@ -178,35 +203,18 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         foreach (var (type, name) in currentClassComponents)
         {
-            foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
+            foreach (var (member, memberName) in GetComponentMembers(type))
             {
-                string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{property.Name}" : property.Name;
-                string typeName = property.Type.ToDisplayString();
+                string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
+                string typeName = member.GetSymbolType().ToDisplayString();
                 
                 if (typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func")) //check if delegate
                 {
-                    writer.OpenScope($"public {typeName} {accessorName}");
-                    writer.OpenScope("get");
-                        writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-                        writer.AddLine($"return component.{property.Name};");
-                    writer.CloseScope();
-                    writer.OpenScope("set");
-                        writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-                        writer.AddLine($"component.{property.Name} = value;");
-                    writer.CloseScope();
-                    writer.CloseScope();
+                    GenerateDelegateAccessor(writer, type, member, accessorName);
                 }
                 else
                 {
-                    writer.AddLine($"private {typeName} {accessorName.ToLowerInvariant()};");
-                    writer.OpenScope($"public {typeName} {accessorName}");
-                        writer.AddLine($"get => {accessorName.ToLowerInvariant()};");
-                        writer.OpenScope("set");
-                            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-                            writer.AddLine($"component.{property.Name} = value;");
-                            writer.AddLine($"{accessorName.ToLowerInvariant()} = value;");
-                        writer.CloseScope();
-                    writer.CloseScope();
+                    GenerateValueTypeAccessor(writer, type, member, accessorName);
                 }
                 writer.AddLine();
             }
@@ -215,6 +223,67 @@ public class EcsSourceGenerator : IIncrementalGenerator
         writer.CloseScope();
 
         return writer.ToString();
+    }
+
+    private void GenerateDelegateAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
+    {
+        string typeName = member.GetSymbolType().ToDisplayString();
+
+        writer.OpenScope($"public {typeName} {accessorName}");
+        if (CanRead(member))
+        {
+            writer.OpenScope("get");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"return component.{member.Name};");
+            writer.CloseScope();
+        }
+        if (CanWrite(member))
+        {
+            writer.OpenScope("set");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"component.{member.Name} = value;");
+            writer.CloseScope();
+        }
+        writer.CloseScope();
+    }
+
+    private void GenerateValueTypeAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
+    {
+        string typeName = member.GetSymbolType().ToDisplayString();
+
+        writer.AddLine($"private {typeName} {accessorName.ToLowerInvariant()};");
+        writer.OpenScope($"public {typeName} {accessorName}");
+        if (CanRead(member))
+        {
+            writer.AddLine($"get => {accessorName.ToLowerInvariant()};");
+        }
+        if (CanWrite(member))
+        {
+            writer.OpenScope("set");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"component.{member.Name} = value;");
+            writer.AddLine($"{accessorName.ToLowerInvariant()} = value;");
+            writer.CloseScope();
+        }
+        writer.CloseScope();
+    }
+
+    private bool CanRead(ISymbol member)
+    {
+        if (member is IPropertySymbol property)
+        {
+            return property.GetMethod?.DeclaredAccessibility == Accessibility.Public;
+        }
+        return member is IFieldSymbol field && field.DeclaredAccessibility == Accessibility.Public;
+    }
+
+    private bool CanWrite(ISymbol member)
+    {
+        if (member is IPropertySymbol property)
+        {
+            return property.SetMethod?.DeclaredAccessibility == Accessibility.Public;
+        }
+        return member is IFieldSymbol field && !field.IsReadOnly && field.DeclaredAccessibility == Accessibility.Public;
     }
 
     private string GenerateDebugInfo(INamedTypeSymbol classSymbol, List<(INamedTypeSymbol Type, string Name)> components)
@@ -231,5 +300,18 @@ public class EcsSourceGenerator : IIncrementalGenerator
         }
 
         return writer.ToString();
+    }
+}
+
+public static class SymbolExtensions
+{
+    public static ITypeSymbol GetSymbolType(this ISymbol symbol)
+    {
+        return symbol switch
+        {
+            IFieldSymbol field => field.Type,
+            IPropertySymbol property => property.Type,
+            _ => throw new ArgumentException("Symbol must be a field or property", nameof(symbol))
+        };
     }
 }
