@@ -12,7 +12,7 @@ namespace Zinc.ECSGenerator;
 [Generator]
 public class EcsSourceGenerator : IIncrementalGenerator
 {
-    public static string BaseClassName = "EntityBase";
+    public static string BaseClassName = "Entity";
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<(Compilation, ClassDeclarationSyntax)> classDeclarations = context.SyntaxProvider
@@ -148,6 +148,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         writer.AddLine("using Zinc.Core;");
         writer.AddLine("using Arch.Core;");
         writer.AddLine("using Arch.Core.Extensions;");
+        writer.AddLine("using Arch.Core.Utils;");
         writer.AddLine("");
 
         if (!string.IsNullOrEmpty(nameSpace))

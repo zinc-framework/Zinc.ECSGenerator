@@ -48,19 +48,11 @@ public class BaseClassComponent : IComponent
 }
 
 [Component<BaseClassComponent>()]
-public partial class EntityBase
+public partial class Entity
 {
     //test to make sure we can have a base class with components
     //shim the real entity class
     public ShimECSEntity ECSEntity = new();
-}
-
-public class Entity : EntityBase
-{
-    protected virtual void AddAttributeComponents()
-    {
-
-    }
 }
 
 // [UseNestedComponentMemberNames]

@@ -5,6 +5,11 @@ namespace Arch.Core.Extensions
     
 }
 
+namespace Arch.Core.Utils
+{
+    
+}
+
 namespace Arch.Core
 {
     public class ComponentType
