@@ -39,6 +39,11 @@ public class ShimECSEntity
             return ref System.Runtime.CompilerServices.Unsafe.As<object, T>(ref component);
         }
     }
+
+    public void Set(params object[] args)
+    {
+        return;
+    }
 }
 public class BaseComponentAttribute : System.Attribute {}
 public class UseNestedComponentMemberNamesAttribute : System.Attribute {}

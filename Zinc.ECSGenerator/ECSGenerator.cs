@@ -139,9 +139,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return components;
     }
 
-    private List<(ISymbol Member, string Name)> GetComponentMembers(INamedTypeSymbol componentType)
+    private List<(ISymbol Member, string Name, string DefaultValue)> GetComponentMembers(INamedTypeSymbol componentType)
     {
-        var members = new List<(ISymbol, string)>();
+        var members = new List<(ISymbol, string, string)>();
 
         foreach (var member in componentType.GetMembers())
         {
@@ -151,20 +151,69 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 if (property.GetMethod?.DeclaredAccessibility == Accessibility.Public ||
                     property.SetMethod?.DeclaredAccessibility == Accessibility.Public)
                 {
-                    members.Add((property, property.Name));
+                    string defaultValue = GetDefaultValue(property);
+                    members.Add((property, property.Name, defaultValue));
                 }
             }
             else if (member is IFieldSymbol field && field.DeclaredAccessibility == Accessibility.Public)
             {
                 // Include public fields
-                members.Add((field, field.Name));
+                string defaultValue = GetDefaultValue(field);
+                members.Add((field, field.Name, defaultValue));
             }
         }
 
         return members;
     }
 
-    private string GeneratePartialClass(string nameSpace, string className, string baseClassName, 
+  private string GetDefaultValue(ISymbol symbol)
+    {
+        // Handle field initializers
+        if (symbol is IFieldSymbol field)
+        {
+            if (field.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is VariableDeclaratorSyntax fieldDeclarator 
+                && fieldDeclarator.Initializer != null)
+            {
+                return fieldDeclarator.Initializer.Value.ToString();
+            }
+            return null; // No explicit initializer
+        }
+        // Handle property initializers
+        else if (symbol is IPropertySymbol property)
+        {
+            if (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is PropertyDeclarationSyntax propertyDeclaration 
+                && propertyDeclaration.Initializer != null)
+            {
+                return propertyDeclaration.Initializer.Value.ToString();
+            }
+        }
+
+        // Handle primary constructors for records only
+        var containingType = symbol.ContainingType;
+        if (containingType.IsRecord)
+        {
+            var recordDeclarationSyntax = containingType.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as RecordDeclarationSyntax;
+            
+            if (recordDeclarationSyntax?.ParameterList != null)
+            {
+                var parameter = recordDeclarationSyntax.ParameterList.Parameters
+                    .FirstOrDefault(p => p.Identifier.Text == symbol.Name);
+                if (parameter?.Default is EqualsValueClauseSyntax defaultValue)
+                {
+                    return defaultValue.Value.ToString();
+                }
+            }
+        }
+
+        return null; // No explicit default value found
+    }
+
+    private bool TypeSymbolIsWriteable(INamedTypeSymbol type)
+    {
+        return !type.IsReadOnly && (type.IsRecord ? !type.IsReferenceType : true);
+    }
+
+     private string GeneratePartialClass(string nameSpace, string className, string baseClassName, 
         List<(INamedTypeSymbol Type, string Name)> currentClassComponents, 
         List<(INamedTypeSymbol Type, string Name)> allComponents)
     {
@@ -176,6 +225,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         writer.AddLine("using Arch.Core.Utils;");
         writer.AddLine("");
 
+
         if (!string.IsNullOrEmpty(nameSpace))
         {
             writer.AddLine($"namespace {nameSpace};");
@@ -184,6 +234,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         var isBaseClass = baseClassName == "Object";
 
+
         //the base class doesn't inherit from anything explicitly
         writer.OpenScope($"public partial class {className}{(isBaseClass ? "" : $" : {baseClassName}")}");
 
@@ -191,15 +242,53 @@ public class EcsSourceGenerator : IIncrementalGenerator
         {
             var typeTypeNames = allComponents.Select(c => $"typeof({c.Type.Name})");
             writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
-            var visibility = isBaseClass ? "protected virtual" : "protected override";
-            writer.OpenScope($"{visibility} Arch.Core.Entity CreateECSEntity(World world)");
-            writer.AddLine("return world.Create(EntityArchetype);");
+            
+            writer.OpenScope("protected virtual Arch.Core.Entity CreateECSEntity(World world)");
+            writer.AddLine("var entity = world.Create(EntityArchetype);");
+            writer.AddLine("AssignDefaultValues();");
+            writer.AddLine("return entity;");
+            writer.CloseScope();
+
+            writer.OpenScope("protected virtual void AssignDefaultValues()");
+            if (!isBaseClass)
+            {
+                writer.AddLine("base.AssignDefaultValues();");
+            }
+            
+            // We'll add default value assignments here
+            //filter out components that aren't writeable due to type signature
+            foreach (var (type, name) in currentClassComponents)
+            {
+                if(TypeSymbolIsWriteable(type))
+                {
+                    foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
+                    {
+                        string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
+                        if (defaultValue != null && CanWrite(member))
+                        {
+                            writer.AddLine($"{accessorName} = {defaultValue};");
+                        }
+                    }
+                }
+                else
+                {
+                    //for non-writeable components, we basically make a "new" version of the component on this but inited with the default values
+                    List<string> ctorParams = new();
+                    foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
+                    {
+                        ctorParams.Add($"{memberName}:{(defaultValue != null ? defaultValue : "default")}");
+                    }
+                    var finalParams = String.Join(",", ctorParams);
+                    writer.AddLine($"ECSEntity.Set(new {type.Name}({finalParams}));");
+                }
+            }
+            
             writer.CloseScope();
         }
 
         foreach (var (type, name) in currentClassComponents)
         {
-            foreach (var (member, memberName) in GetComponentMembers(type))
+            foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
             {
                 string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
                 string typeName = member.GetSymbolType().ToDisplayString();
@@ -221,6 +310,25 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return writer.ToString();
     }
 
+    private void GenerateValueTypeAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
+    {
+        string typeName = member.GetSymbolType().ToDisplayString();
+
+        writer.OpenScope($"public {typeName} {accessorName}");
+        if (CanRead(member))
+        {
+            writer.AddLine($"get => ECSEntity.Get<{type.Name}>().{member.Name};");
+        }
+        if (CanWrite(member) && TypeSymbolIsWriteable(type))
+        {
+            writer.OpenScope("set");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"component.{member.Name} = value;");
+            writer.CloseScope();
+        }
+        writer.CloseScope();
+    }
+
     private void GenerateDelegateAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
     {
         string typeName = member.GetSymbolType().ToDisplayString();
@@ -233,32 +341,11 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine($"return component.{member.Name};");
             writer.CloseScope();
         }
-        if (CanWrite(member))
+        if (CanWrite(member) && TypeSymbolIsWriteable(type))
         {
             writer.OpenScope("set");
             writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
             writer.AddLine($"component.{member.Name} = value;");
-            writer.CloseScope();
-        }
-        writer.CloseScope();
-    }
-
-    private void GenerateValueTypeAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
-    {
-        string typeName = member.GetSymbolType().ToDisplayString();
-
-        writer.AddLine($"private {typeName} {accessorName.ToLowerInvariant()};");
-        writer.OpenScope($"public {typeName} {accessorName}");
-        if (CanRead(member))
-        {
-            writer.AddLine($"get => {accessorName.ToLowerInvariant()};");
-        }
-        if (CanWrite(member))
-        {
-            writer.OpenScope("set");
-            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
-            writer.AddLine($"component.{member.Name} = value;");
-            writer.AddLine($"{accessorName.ToLowerInvariant()} = value;");
             writer.CloseScope();
         }
         writer.CloseScope();

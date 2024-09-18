@@ -25,8 +25,8 @@ class Program
 // (such that we dont need arch as a direct dep for the sample project)
 public class Position : IComponent 
 { 
-    public float X { get; set; } 
-    public float Y { get; set; } 
+    public float X { get; set; } = 1;
+    public float Y { get; set; }
     public float Z { get; set; } 
     public Action<float> OnValueChanged { get; set; }
 }
@@ -45,6 +45,15 @@ public class DerrivedComponent : IComponent
 public class BaseClassComponent : IComponent
 {
     public int ID { get; set; }
+}
+
+public record struct TestPrimaryCtorComponent(int recordStructValue = 10) : IComponent;
+public readonly record struct TestPrimaryCtorComponent2(int something, int readonlyRecordStructValue = 11) : IComponent;
+public record TestPrimaryCtorComponent3(int recordValue = 12) : IComponent
+{
+    public TestPrimaryCtorComponent3() : this(13)
+    {
+    }
 }
 
 public class AccessorComponentTester : IComponent
@@ -68,6 +77,9 @@ public partial class Entity
 }
 
 [Component<AccessorComponentTester>]
+// [Component<TestPrimaryCtorComponent>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
+// [Component<TestPrimaryCtorComponent2>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
+// [Component<TestPrimaryCtorComponent3>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
 public partial class AccessorTesterEntity : Entity
 {
 
