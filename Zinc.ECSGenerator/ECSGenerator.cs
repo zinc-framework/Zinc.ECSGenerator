@@ -182,21 +182,17 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine();
         }
 
-        if(baseClassName == "Object")
-        {
-            //the base class doesn't inherit from anything explicitly
-            writer.OpenScope($"public partial class {className}");
-        }
-        else
-        {
-            writer.OpenScope($"public partial class {className} : {baseClassName}");
-        }
+        var isBaseClass = baseClassName == "Object";
+
+        //the base class doesn't inherit from anything explicitly
+        writer.OpenScope($"public partial class {className}{(isBaseClass ? "" : $" : {baseClassName}")}");
 
         if(allComponents.Any())
         {
             var typeTypeNames = allComponents.Select(c => $"typeof({c.Type.Name})");
             writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
-            writer.OpenScope("private Arch.Core.Entity CreateECSEntity(World world)");
+            var visibility = isBaseClass ? "protected virtual" : "protected override";
+            writer.OpenScope($"{visibility} Arch.Core.Entity CreateECSEntity(World world)");
             writer.AddLine("return world.Create(EntityArchetype);");
             writer.CloseScope();
         }
