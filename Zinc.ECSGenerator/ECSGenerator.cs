@@ -244,46 +244,47 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
             
             writer.OpenScope("protected virtual Arch.Core.Entity CreateECSEntity(World world)");
-            writer.AddLine("var entity = world.Create(EntityArchetype);");
-            writer.AddLine("AssignDefaultValues();");
-            writer.AddLine("return entity;");
+            writer.AddLine("return world.Create(EntityArchetype);");
+            // writer.AddLine("var entity = world.Create(EntityArchetype);");
+            // writer.AddLine("AssignDefaultValues();");
+            // writer.AddLine("return entity;");
             writer.CloseScope();
 
-            writer.OpenScope("protected virtual void AssignDefaultValues()");
-            if (!isBaseClass)
-            {
-                writer.AddLine("base.AssignDefaultValues();");
-            }
+            // writer.OpenScope("protected virtual void AssignDefaultValues()");
+            // if (!isBaseClass)
+            // {
+            //     writer.AddLine("base.AssignDefaultValues();");
+            // }
             
-            // We'll add default value assignments here
-            //filter out components that aren't writeable due to type signature
-            foreach (var (type, name) in currentClassComponents)
-            {
-                if(TypeSymbolIsWriteable(type))
-                {
-                    foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
-                    {
-                        string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
-                        if (defaultValue != null && CanWrite(member))
-                        {
-                            writer.AddLine($"{accessorName} = {defaultValue};");
-                        }
-                    }
-                }
-                else
-                {
-                    //for non-writeable components, we basically make a "new" version of the component on this but inited with the default values
-                    List<string> ctorParams = new();
-                    foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
-                    {
-                        ctorParams.Add($"{memberName}:{(defaultValue != null ? defaultValue : "default")}");
-                    }
-                    var finalParams = String.Join(",", ctorParams);
-                    writer.AddLine($"ECSEntity.Set(new {type.Name}({finalParams}));");
-                }
-            }
+            // // We'll add default value assignments here
+            // //filter out components that aren't writeable due to type signature
+            // foreach (var (type, name) in currentClassComponents)
+            // {
+            //     if(TypeSymbolIsWriteable(type))
+            //     {
+            //         foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
+            //         {
+            //             string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
+            //             if (defaultValue != null && CanWrite(member))
+            //             {
+            //                 writer.AddLine($"{accessorName} = {defaultValue};");
+            //             }
+            //         }
+            //     }
+            //     else
+            //     {
+            //         //for non-writeable components, we basically make a "new" version of the component on this but inited with the default values
+            //         List<string> ctorParams = new();
+            //         foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
+            //         {
+            //             ctorParams.Add($"{memberName}:{(defaultValue != null ? defaultValue : "default")}");
+            //         }
+            //         var finalParams = String.Join(",", ctorParams);
+            //         writer.AddLine($"ECSEntity.Set(new {type.Name}({finalParams}));");
+            //     }
+            // }
             
-            writer.CloseScope();
+            // writer.CloseScope();
         }
 
         foreach (var (type, name) in currentClassComponents)
