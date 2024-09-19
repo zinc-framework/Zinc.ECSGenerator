@@ -243,8 +243,8 @@ public class EcsSourceGenerator : IIncrementalGenerator
         {
             var typeTypeNames = allComponents.Select(c => $"typeof({c.Type.Name})");
             writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
-            
-            writer.OpenScope("protected virtual Arch.Core.Entity CreateECSEntity(World world)");
+            var visibility = isBaseClass ? "protected virtual" : "protected override";
+            writer.OpenScope($"{visibility} Arch.Core.Entity CreateECSEntity(World world)");
             writer.AddLine("return world.Create(EntityArchetype);");
             // writer.AddLine("var entity = world.Create(EntityArchetype);");
             // writer.AddLine("AssignDefaultValues();");
