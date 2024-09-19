@@ -260,10 +260,10 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
             var visibility = isBaseClass ? "protected virtual" : "protected override";
             writer.OpenScope($"{visibility} Arch.Core.Entity CreateECSEntity(World world)");
-            // writer.AddLine("return world.Create(EntityArchetype);");
-            writer.AddLine("var entity = world.Create(EntityArchetype);");
-            writer.AddLine("AssignDefaultValues();");
-            writer.AddLine("return entity;");
+            writer.AddLine("return world.Create(EntityArchetype);");
+            // writer.AddLine("var entity = world.Create(EntityArchetype);");
+            // writer.AddLine("AssignDefaultValues();"); dont do this automatically, let the user decide (also need ECSEntity to be assigned before this)
+            // writer.AddLine("return entity;");
             writer.CloseScope();
 
             writer.OpenScope("protected virtual void AssignDefaultValues()");
