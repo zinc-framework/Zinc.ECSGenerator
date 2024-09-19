@@ -307,7 +307,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
             {
                 if (type.IsRecord)
                 {
-                    GenerateRecordInitialization(writer, type, name);
+                    GenerateRecordInitialization(writer, type, name, fullTypeName);
                 }
                 else if(TypeSymbolIsWriteable(type))
                 {
@@ -353,7 +353,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return writer.ToString();
     }
 
-    private void GenerateRecordInitialization(Utils.CodeWriter writer, INamedTypeSymbol type, string name)
+    private void GenerateRecordInitialization(Utils.CodeWriter writer, INamedTypeSymbol type, string name, string fullTypeName)
     {
         //this respects the primary ctor
         var members = GetComponentMembers(type);
@@ -362,7 +362,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         var memberInits = members.Where(m => !m.IsPrimaryCtorParam && m.DefaultValue != null && CanWrite(m.Member))
                                  .Select(m => $"{m.Name} = {m.DefaultValue}");
 
-        writer.AddLine($"ECSEntityReference.Entity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
+        writer.AddLine($"ECSEntityReference.Entity.Set(new {fullTypeName}({string.Join(", ", ctorParams)}));");
         // dont think we need this if we are doing new() unless we want to set values differet than defaults?
         // if (memberInits.Any())
         // {
