@@ -14,6 +14,8 @@ class Program
         System.Console.WriteLine($"ID: {e.ID} X: {e.X}, Y: {e.Y}");
         e.OnValueChanged?.Invoke(42);
 
+        var f = new NestedEntity(){NestedValue = 12};
+
         var d = new DerrivedClass();
         d.derrivedValue = 42;
     }
@@ -72,6 +74,23 @@ public class AccessorComponentTester : IComponent
     public int ProtectedGetter { protected get; set; } = 4;
     public int PrivateSetter { get; private set; } = 4;
     public int ProtectedSetter { get; protected set; } = 4;
+}
+
+public static class NestedTest
+{
+    public class NestedComponent : IComponent
+    {
+        public int NestedValue { get; set; }
+    }
+
+    [Component<Position>()]
+    [Component<NestedComponent>()]
+    [Component<Collider>("CircleCollider")]
+    public partial class NestedEntity : Entity
+    {
+        //test that we can do derrived classes
+    }
+
 }
 
 [Component<BaseClassComponent>()]

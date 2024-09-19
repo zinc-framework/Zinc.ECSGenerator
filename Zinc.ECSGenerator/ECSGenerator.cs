@@ -34,6 +34,16 @@ public class EcsSourceGenerator : IIncrementalGenerator
         {
             if (classSymbol.Name == BaseClassName)
                 return true;
+            
+            // Check if any containing type is derived from Entity
+            var containingType = classSymbol.ContainingType;
+            while (containingType != null)
+            {
+                if (containingType.Name == BaseClassName)
+                    return true;
+                containingType = containingType.BaseType;
+            }
+            
             classSymbol = classSymbol.BaseType;
         }
         
@@ -62,9 +72,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
         }
     }
 
-    private List<(INamedTypeSymbol Type, string Name)> GetAllComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
+    private List<(INamedTypeSymbol Type, string Name, string fullTypeName)> GetAllComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
     {
-        var components = new List<(INamedTypeSymbol, string)>();
+        var components = new List<(INamedTypeSymbol, string, string)>();
         while (classSymbol != null)
         {
             components.AddRange(GetComponentAttributes(classSymbol, useNestedNames));
@@ -100,9 +110,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return classSymbol.GetAttributes().Any(attr => attr.AttributeClass.Name == "UseNestedComponentMemberNamesAttribute");
     }
 
-    private List<(INamedTypeSymbol Type, string Name)> GetComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
-    {
-        var components = new List<(INamedTypeSymbol, string)>();
+    private List<(INamedTypeSymbol Type, string Name, string FullTypeName)> GetComponentAttributes(INamedTypeSymbol classSymbol, bool useNestedNames)
+{
+        var components = new List<(INamedTypeSymbol, string, string)>();
         
         foreach (var attribute in classSymbol.GetAttributes())
         {
@@ -132,11 +142,32 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 // Apply default if value is still null
                 name = name ?? (useNestedNames ? componentType.Name : "");
 
-                components.Add((componentType, name));
+                // Get the full type name including any containing types
+                string fullTypeName = GetFullTypeName(componentType);
+
+                components.Add((componentType, name, fullTypeName));
             }
         }
         
         return components;
+    }
+
+    private string GetFullTypeName(INamedTypeSymbol type)
+    {
+        var parts = new List<string>();
+        var currentType = type;
+
+        while (currentType != null)
+        {
+            parts.Add(currentType.Name);
+            currentType = currentType.ContainingType;
+        }
+
+        parts.Reverse();
+        string namespacePart = type.ContainingNamespace.ToDisplayString();
+        string typePart = string.Join(".", parts);
+
+        return string.IsNullOrEmpty(namespacePart) ? typePart : $"{namespacePart}.{typePart}";
     }
 
     private List<(ISymbol Member, string Name, string DefaultValue, bool IsPrimaryCtorParam)> GetComponentMembers(INamedTypeSymbol componentType)
@@ -230,8 +261,8 @@ public class EcsSourceGenerator : IIncrementalGenerator
     }
 
      private string GeneratePartialClass(string nameSpace, string className, string baseClassName, 
-        List<(INamedTypeSymbol Type, string Name)> currentClassComponents, 
-        List<(INamedTypeSymbol Type, string Name)> allComponents)
+        List<(INamedTypeSymbol Type, string Name, string FullTypeName)> currentClassComponents, 
+        List<(INamedTypeSymbol Type, string Name, string FullTypeName)> allComponents)
     {
         var writer = new Utils.CodeWriter();
 
@@ -256,7 +287,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         if(allComponents.Any())
         {
-            var typeTypeNames = allComponents.Select(c => $"typeof({c.Type.Name})");
+            var typeTypeNames = allComponents.Select(c => $"typeof({c.FullTypeName})");
             writer.AddLine($"private readonly ComponentType[] EntityArchetype = new ComponentType[]{{{string.Join(",", typeTypeNames)}}};");
             var visibility = isBaseClass ? "protected virtual" : "protected override";
             writer.OpenScope($"{visibility} Arch.Core.Entity CreateECSEntity(World world)");
@@ -272,7 +303,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 writer.AddLine("base.AssignDefaultValues();");
             }
             
-            foreach (var (type, name) in currentClassComponents)
+            foreach (var (type, name, fullTypeName) in currentClassComponents)
             {
                 if (type.IsRecord)
                 {
@@ -298,7 +329,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
             writer.CloseScope();
         }
 
-        foreach (var (type, name) in currentClassComponents)
+        foreach (var (type, name, fullTypeName) in currentClassComponents)
         {
             foreach (var (member, memberName, defaultValue, isPrimaryCtorParam) in GetComponentMembers(type))
             {
@@ -307,11 +338,11 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 
                 if (typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func")) //check if delegate
                 {
-                    GenerateDelegateAccessor(writer, type, member, accessorName);
+                    GenerateDelegateAccessor(writer, fullTypeName, member, accessorName);
                 }
                 else
                 {
-                    GenerateValueTypeAccessor(writer, type, member, accessorName);
+                    GenerateValueTypeAccessor(writer, fullTypeName, member, accessorName);
                 }
                 writer.AddLine();
             }
@@ -371,26 +402,26 @@ public class EcsSourceGenerator : IIncrementalGenerator
         writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
     }
 
-    private void GenerateValueTypeAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
+    private void GenerateValueTypeAccessor(Utils.CodeWriter writer, string fullTypeName, ISymbol member, string accessorName)
     {
         string typeName = member.GetSymbolType().ToDisplayString();
 
         writer.OpenScope($"public {typeName} {accessorName}");
         if (CanRead(member))
         {
-            writer.AddLine($"get => ECSEntity.Get<{type.Name}>().{member.Name};");
+            writer.AddLine($"get => ECSEntity.Get<{fullTypeName}>().{member.Name};");
         }
-        if (CanWrite(member) && TypeSymbolIsWriteable(type))
+        if (CanWrite(member) && TypeSymbolIsWriteable(member.ContainingType as INamedTypeSymbol))
         {
             writer.OpenScope("set");
-            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{fullTypeName}>();");
             writer.AddLine($"component.{member.Name} = value;");
             writer.CloseScope();
         }
         writer.CloseScope();
     }
 
-    private void GenerateDelegateAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
+    private void GenerateDelegateAccessor(Utils.CodeWriter writer, string fullTypeName, ISymbol member, string accessorName)
     {
         string typeName = member.GetSymbolType().ToDisplayString();
 
@@ -398,14 +429,14 @@ public class EcsSourceGenerator : IIncrementalGenerator
         if (CanRead(member))
         {
             writer.OpenScope("get");
-            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{fullTypeName}>();");
             writer.AddLine($"return component.{member.Name};");
             writer.CloseScope();
         }
-        if (CanWrite(member) && TypeSymbolIsWriteable(type))
+        if (CanWrite(member) && TypeSymbolIsWriteable(member.ContainingType as INamedTypeSymbol))
         {
             writer.OpenScope("set");
-            writer.AddLine($"ref var component = ref ECSEntity.Get<{type.Name}>();");
+            writer.AddLine($"ref var component = ref ECSEntity.Get<{fullTypeName}>();");
             writer.AddLine($"component.{member.Name} = value;");
             writer.CloseScope();
         }
