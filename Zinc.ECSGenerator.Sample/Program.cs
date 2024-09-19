@@ -49,7 +49,7 @@ public class BaseClassComponent : IComponent
 
 public record struct TestPrimaryCtorComponent(int recordStructValue = 10) : IComponent;
 public readonly record struct TestPrimaryCtorComponent2(int something, int readonlyRecordStructValue = 11) : IComponent;
-public record TestPrimaryCtorComponent3(int recordValue = 12) : IComponent
+public record TestPrimaryCtorComponent3(int myVal, int recordValue = 12) : IComponent
 {
     public static int StaticValue = 33;
     //TODO: need to seperate the idea here of ctor args and member values

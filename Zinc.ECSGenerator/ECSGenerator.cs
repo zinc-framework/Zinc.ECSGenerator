@@ -139,28 +139,43 @@ public class EcsSourceGenerator : IIncrementalGenerator
         return components;
     }
 
-    private List<(ISymbol Member, string Name, string DefaultValue)> GetComponentMembers(INamedTypeSymbol componentType)
+    private List<(ISymbol Member, string Name, string DefaultValue, bool IsPrimaryCtorParam)> GetComponentMembers(INamedTypeSymbol componentType)
     {
-        var members = new List<(ISymbol, string, string)>();
+        var members = new List<(ISymbol, string, string, bool)>();
+        var primaryCtorParams = new HashSet<string>();
+
+        if (componentType.IsRecord)
+        {
+            var recordDeclaration = componentType.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as RecordDeclarationSyntax;
+            if (recordDeclaration?.ParameterList != null)
+            {
+                foreach (var param in recordDeclaration.ParameterList.Parameters)
+                {
+                    primaryCtorParams.Add(param.Identifier.Text);
+                    string defaultValue = param.Default?.Value.ToString();
+                    members.Add((componentType.GetMembers(param.Identifier.Text).FirstOrDefault(), param.Identifier.Text, defaultValue, true));
+                }
+            }
+        }
 
         foreach (var member in componentType.GetMembers())
         {
-            if(member.IsStatic){continue;}
+            if (member.IsStatic) continue;
+            if (primaryCtorParams.Contains(member.Name)) continue; // Skip primary constructor parameters
+
             if (member is IPropertySymbol property)
             {
-                // Include properties with at least one public accessor
                 if (property.GetMethod?.DeclaredAccessibility == Accessibility.Public ||
                     property.SetMethod?.DeclaredAccessibility == Accessibility.Public)
                 {
                     string defaultValue = GetDefaultValue(property);
-                    members.Add((property, property.Name, defaultValue));
+                    members.Add((property, property.Name, defaultValue, false));
                 }
             }
             else if (member is IFieldSymbol field && field.DeclaredAccessibility == Accessibility.Public)
             {
-                // Include public fields
                 string defaultValue = GetDefaultValue(field);
-                members.Add((field, field.Name, defaultValue));
+                members.Add((field, field.Name, defaultValue, false));
             }
         }
 
@@ -257,13 +272,15 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 writer.AddLine("base.AssignDefaultValues();");
             }
             
-            // We'll add default value assignments here
-            //filter out components that aren't writeable due to type signature
             foreach (var (type, name) in currentClassComponents)
             {
-                if(TypeSymbolIsWriteable(type))
+                if (type.IsRecord)
                 {
-                    foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
+                    GenerateRecordInitialization(writer, type, name);
+                }
+                else if(TypeSymbolIsWriteable(type))
+                {
+                    foreach (var (member, memberName, defaultValue, _) in GetComponentMembers(type))
                     {
                         string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
                         if (defaultValue != null && CanWrite(member))
@@ -274,14 +291,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 }
                 else
                 {
-                    //for non-writeable components, we basically make a "new" version of the component on this but inited with the default values
-                    List<string> ctorParams = new();
-                    foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
-                    {
-                        ctorParams.Add($"{memberName}:{(defaultValue != null ? defaultValue : "default")}");
-                    }
-                    var finalParams = String.Join(",", ctorParams);
-                    writer.AddLine($"ECSEntity.Set(new {type.Name}({finalParams}));");
+                    GenerateNonWriteableComponentInitialization(writer, type);
                 }
             }
             
@@ -290,7 +300,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         foreach (var (type, name) in currentClassComponents)
         {
-            foreach (var (member, memberName, defaultValue) in GetComponentMembers(type))
+            foreach (var (member, memberName, defaultValue, isPrimaryCtorParam) in GetComponentMembers(type))
             {
                 string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
                 string typeName = member.GetSymbolType().ToDisplayString();
@@ -310,6 +320,54 @@ public class EcsSourceGenerator : IIncrementalGenerator
         writer.CloseScope();
 
         return writer.ToString();
+    }
+
+    private void GenerateRecordInitialization(Utils.CodeWriter writer, INamedTypeSymbol type, string name)
+    {
+        //this respects the primary ctor
+        var members = GetComponentMembers(type);
+        var ctorParams = members.Where(m => m.IsPrimaryCtorParam)
+                                .Select(m => $"{m.Name}: {m.DefaultValue ?? "default"}");
+        var memberInits = members.Where(m => !m.IsPrimaryCtorParam && m.DefaultValue != null)
+                                .Select(m => $"{m.Name} = {m.DefaultValue}");
+
+        writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)})");
+        if (memberInits.Any())
+        {
+            writer.AddLine("{");
+            foreach (var init in memberInits)
+            {
+                writer.AddLine($"    {init},");
+            }
+            writer.AddLine("});");
+        }
+        else
+        {
+            writer.AddLine(");");
+        }
+
+        //this makes everything an object initializer set
+        // var members = GetComponentMembers(type).Select(m => $"{m.Name}= {m.DefaultValue ?? "default"}");
+        // var memini = string.Join(", ", members);
+
+        // writer.AddLine($"ECSEntity.Set(new {type.Name}()");
+        // if (members.Any())
+        // {
+        //     writer.AddLine("{");
+        //     writer.AddLine(memini);
+        //     writer.AddLine("});");
+        // }
+        // else
+        // {
+        //     writer.AddLine(");");
+        // }
+    }
+
+    private void GenerateNonWriteableComponentInitialization(Utils.CodeWriter writer, INamedTypeSymbol type)
+    {
+        var members = GetComponentMembers(type);
+        var ctorParams = members.Select(m => $"{m.Name}: {m.DefaultValue ?? "default"}");
+        writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
     }
 
     private void GenerateValueTypeAccessor(Utils.CodeWriter writer, INamedTypeSymbol type, ISymbol member, string accessorName)
