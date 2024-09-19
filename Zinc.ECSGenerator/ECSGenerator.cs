@@ -145,6 +145,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
 
         foreach (var member in componentType.GetMembers())
         {
+            if(member.IsStatic){continue;}
             if (member is IPropertySymbol property)
             {
                 // Include properties with at least one public accessor
