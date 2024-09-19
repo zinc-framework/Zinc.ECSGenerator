@@ -51,6 +51,7 @@ public record struct TestPrimaryCtorComponent(int recordStructValue = 10) : ICom
 public readonly record struct TestPrimaryCtorComponent2(int something, int readonlyRecordStructValue = 11) : IComponent;
 public record TestPrimaryCtorComponent3(int myVal, int recordValue = 12) : IComponent
 {
+    public int ProtectedSetterValue { get; protected set; } = 10;
     public static int StaticValue = 33;
     //TODO: need to seperate the idea here of ctor args and member values
     //member values should be set in {} after constrcution in object whereas ctor args for primary ctor should be set in the ctor
@@ -59,6 +60,7 @@ public record TestPrimaryCtorComponent3(int myVal, int recordValue = 12) : IComp
     {
     }
 }
+public record TestPrimaryCtorComponent4() : IComponent;
 
 public class AccessorComponentTester : IComponent
 {
@@ -84,6 +86,7 @@ public partial class Entity
 // [Component<TestPrimaryCtorComponent>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
 // [Component<TestPrimaryCtorComponent2>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
 [Component<TestPrimaryCtorComponent3>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
+[Component<TestPrimaryCtorComponent4>] //uncomment this to test gen, but wont compile because entity shim requires a ref type for component
 public partial class AccessorTesterEntity : Entity
 {
 

@@ -328,23 +328,24 @@ public class EcsSourceGenerator : IIncrementalGenerator
         var members = GetComponentMembers(type);
         var ctorParams = members.Where(m => m.IsPrimaryCtorParam)
                                 .Select(m => $"{m.Name}: {m.DefaultValue ?? "default"}");
-        var memberInits = members.Where(m => !m.IsPrimaryCtorParam && m.DefaultValue != null)
-                                .Select(m => $"{m.Name} = {m.DefaultValue}");
+        var memberInits = members.Where(m => !m.IsPrimaryCtorParam && m.DefaultValue != null && CanWrite(m.Member))
+                                 .Select(m => $"{m.Name} = {m.DefaultValue}");
 
-        writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)})");
-        if (memberInits.Any())
-        {
-            writer.AddLine("{");
-            foreach (var init in memberInits)
-            {
-                writer.AddLine($"    {init},");
-            }
-            writer.AddLine("});");
-        }
-        else
-        {
-            writer.AddLine(");");
-        }
+        writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
+        // dont think we need this if we are doing new() unless we want to set values differet than defaults?
+        // if (memberInits.Any())
+        // {
+        //     writer.AddLine("{");
+        //     foreach (var init in memberInits)
+        //     {
+        //         writer.AddLine($"    {init},");
+        //     }
+        //     writer.AddLine("});");
+        // }
+        // else
+        // {
+        //     writer.AddLine(");");
+        // }
 
         //this makes everything an object initializer set
         // var members = GetComponentMembers(type).Select(m => $"{m.Name}= {m.DefaultValue ?? "default"}");
