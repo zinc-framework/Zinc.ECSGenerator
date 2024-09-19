@@ -45,6 +45,17 @@ public class ShimECSEntity
         return;
     }
 }
+
+public static class ECSEntityReference
+{
+    public static class Entity
+    {
+        public static void Set(params object[] args)
+        {
+            return;
+        }
+    }
+}
 public class BaseComponentAttribute : System.Attribute {}
 public class UseNestedComponentMemberNamesAttribute : System.Attribute {}
 public interface IComponent {}

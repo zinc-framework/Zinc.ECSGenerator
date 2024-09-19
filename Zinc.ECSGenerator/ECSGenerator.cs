@@ -331,7 +331,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
         var memberInits = members.Where(m => !m.IsPrimaryCtorParam && m.DefaultValue != null && CanWrite(m.Member))
                                  .Select(m => $"{m.Name} = {m.DefaultValue}");
 
-        writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
+        writer.AddLine($"ECSEntityReference.Entity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
         // dont think we need this if we are doing new() unless we want to set values differet than defaults?
         // if (memberInits.Any())
         // {
