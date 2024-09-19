@@ -266,7 +266,7 @@ public class EcsSourceGenerator : IIncrementalGenerator
             // writer.AddLine("return entity;");
             writer.CloseScope();
 
-            writer.OpenScope("protected virtual void AssignDefaultValues()");
+            writer.OpenScope($"{visibility} void AssignDefaultValues()");
             if (!isBaseClass)
             {
                 writer.AddLine("base.AssignDefaultValues();");
