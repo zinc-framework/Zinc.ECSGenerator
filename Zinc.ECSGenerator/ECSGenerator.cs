@@ -333,9 +333,10 @@ public class EcsSourceGenerator : IIncrementalGenerator
         {
             foreach (var (member, memberName, defaultValue, isPrimaryCtorParam) in GetComponentMembers(type))
             {
+                if (HasEntityAccessible(member)) continue; // emitted by GenerateEntityAccessibleMembers
                 string accessorName = !string.IsNullOrEmpty(name) ? $"{name}_{memberName}" : memberName;
                 string typeName = member.GetSymbolType().ToDisplayString();
-                
+
                 if (typeName.StartsWith("System.Action") || typeName.StartsWith("System.Func")) //check if delegate
                 {
                     GenerateDelegateAccessor(writer, fullTypeName, member, accessorName);
@@ -346,6 +347,9 @@ public class EcsSourceGenerator : IIncrementalGenerator
                 }
                 writer.AddLine();
             }
+
+            // Members tagged [EntityAccessible] (methods or properties) are forwarded onto the entity.
+            GenerateEntityAccessibleMembers(writer, type, fullTypeName);
         }
 
         writer.CloseScope();
@@ -400,6 +404,68 @@ public class EcsSourceGenerator : IIncrementalGenerator
         var members = GetComponentMembers(type);
         var ctorParams = members.Select(m => $"{m.Name}: {m.DefaultValue ?? "default"}");
         writer.AddLine($"ECSEntity.Set(new {type.Name}({string.Join(", ", ctorParams)}));");
+    }
+
+    private static bool HasEntityAccessible(ISymbol member)
+        => member.GetAttributes().Any(a => a.AttributeClass?.Name == "EntityAccessibleAttribute");
+
+    // Forward [EntityAccessible] component members onto the entity. Instance members route through a
+    // `ref` to the stored component (so mutations persist); a parameter of type Zinc.Entity is filled
+    // with the owning entity, and if that's the only parameter the member is exposed as a property.
+    private void GenerateEntityAccessibleMembers(Utils.CodeWriter writer, INamedTypeSymbol type, string fullTypeName)
+    {
+        var fq = SymbolDisplayFormat.FullyQualifiedFormat;
+        foreach (var member in type.GetMembers())
+        {
+            if (!HasEntityAccessible(member)) continue;
+
+            if (member is IPropertySymbol prop)
+            {
+                writer.OpenScope($"public {prop.Type.ToDisplayString(fq)} {prop.Name}");
+                if (prop.GetMethod != null)
+                    writer.AddLine($"get => ECSEntity.Get<{fullTypeName}>().{prop.Name};");
+                if (prop.SetMethod != null)
+                {
+                    writer.OpenScope("set");
+                    writer.AddLine($"ref var __c = ref ECSEntity.Get<{fullTypeName}>();");
+                    writer.AddLine($"__c.{prop.Name} = value;");
+                    writer.CloseScope();
+                }
+                writer.CloseScope();
+                writer.AddLine();
+            }
+            else if (member is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary)
+            {
+                string ret = method.ReturnType.ToDisplayString(fq);
+                var entityParam = method.Parameters.FirstOrDefault(p => p.Type.ToDisplayString(fq) == "global::Zinc.Entity");
+                var outerParams = method.Parameters.Where(p => !SymbolEqualityComparer.Default.Equals(p, entityParam)).ToList();
+                string callArgs = string.Join(", ", method.Parameters.Select(p =>
+                    SymbolEqualityComparer.Default.Equals(p, entityParam) ? "this" : p.Name));
+                string target = method.IsStatic ? fullTypeName : "__c";
+                string call = $"{target}.{method.Name}({callArgs})";
+
+                if (entityParam != null && outerParams.Count == 0)
+                {
+                    // entity-bound, no extra args -> expose as a property
+                    writer.OpenScope($"public {ret} {method.Name}");
+                    writer.OpenScope("get");
+                    if (!method.IsStatic) writer.AddLine($"ref var __c = ref ECSEntity.Get<{fullTypeName}>();");
+                    writer.AddLine($"return {call};");
+                    writer.CloseScope();
+                    writer.CloseScope();
+                    writer.AddLine();
+                }
+                else
+                {
+                    string sig = string.Join(", ", outerParams.Select(p => $"{p.Type.ToDisplayString(fq)} {p.Name}"));
+                    writer.OpenScope($"public {ret} {method.Name}({sig})");
+                    if (!method.IsStatic) writer.AddLine($"ref var __c = ref ECSEntity.Get<{fullTypeName}>();");
+                    writer.AddLine($"{(method.ReturnsVoid ? "" : "return ")}{call};");
+                    writer.CloseScope();
+                    writer.AddLine();
+                }
+            }
+        }
     }
 
     private void GenerateValueTypeAccessor(Utils.CodeWriter writer, string fullTypeName, ISymbol member, string accessorName)
