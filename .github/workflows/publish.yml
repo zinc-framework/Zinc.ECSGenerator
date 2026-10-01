@@ -5,7 +5,10 @@ name: Publish to NuGet
 # The package version is taken from the tag (leading "v" stripped), so the tag is
 # the source of truth — the <Version> in the .csproj is only a local-dev default.
 #
-# Requires a repo secret NUGET_API_KEY (Settings -> Secrets and variables -> Actions).
+# Authenticates with nuget.org Trusted Publishing, so there's no stored API key: the
+# job's GitHub OIDC token is exchanged for a one-hour key. nuget.org only issues it
+# when the package owner has a trusted publishing policy matching this repository,
+# this workflow file (publish.yml) and the "production" environment.
 
 on:
   push:
@@ -14,10 +17,12 @@ on:
 
 permissions:
   contents: read
+  id-token: write # lets the job request the OIDC token that NuGet/login exchanges
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: production # must match the policy's Environment
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -39,9 +44,16 @@ jobs:
           -p:GeneratePackageOnBuild=false
           --output ${{ runner.temp }}/pkg
 
+      # After packing: the key expires an hour after it's issued.
+      - name: NuGet login (OIDC to temporary API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: afterschool # the nuget.org account that owns the package and the policy
+
       - name: Push to NuGet
         run: >
           dotnet nuget push "${{ runner.temp }}/pkg/*.nupkg"
-          --api-key ${{ secrets.NUGET_API_KEY }}
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
