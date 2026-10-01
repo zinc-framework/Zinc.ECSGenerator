@@ -10,10 +10,14 @@
         <IsRoslynComponent>true</IsRoslynComponent>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <IncludeBuildOutput>false</IncludeBuildOutput>
+        <!-- Analyzer-only package: the compiler supplies Roslyn when it loads the generator. Without
+             this the Roslyn references become package dependencies, and every consuming game ships
+             the Roslyn assemblies in its output. -->
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
 
         <RootNamespace>Zinc.ECSGenerator</RootNamespace>
         <PackageId>Zinc.ECSGenerator</PackageId>
-        <Version>1.3.2</Version>
+        <Version>1.3.3</Version>
         <Authors>Kyle Kukshtel</Authors>
         <Company>Afterschool Studio</Company>
         <!-- <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\..\artifacts\</PackageOutputPath> -->
